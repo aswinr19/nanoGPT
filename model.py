@@ -10,10 +10,10 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import math
 import inspect
 from dataclasses import dataclass
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from torch.quantization import QuantStub, DeQuantStub
 
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
@@ -77,18 +77,30 @@ class CausalSelfAttention(nn.Module):
 
 class MLP(nn.Module):
 
-    def __init__(self, config):
+    def __init__(self, config, q = False):
         super().__init__()
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu    = nn.GELU()
         self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
+        self.q = q
+        self.quant = QuantStub()
+        self.dequant = DeQuantStub()
 
     def forward(self, x):
+        print('before quantization:')
+        print(x)
+        if self.q:
+            x = self.quant(x)
+        print('after quantization:')
+        print(x)
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
         x = self.dropout(x)
+
+        if self.q:
+            x = self.dequant(x)
         return x
 
 class Block(nn.Module):
