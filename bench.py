@@ -94,7 +94,6 @@ if profile:
             prof.step() # notify the profiler at end of each step
 
 else:
-
     # simple benchmarking
     torch.cuda.synchronize()
     for stage, num_steps in enumerate([10, 20]): # burnin, then benchmark
