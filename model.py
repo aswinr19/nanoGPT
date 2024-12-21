@@ -77,7 +77,7 @@ class CausalSelfAttention(nn.Module):
 
 class MLP(nn.Module):
 
-    def __init__(self, config, q = False):
+    def __init__(self, config, q = True):
         super().__init__()
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu    = nn.GELU()
@@ -88,12 +88,6 @@ class MLP(nn.Module):
         self.dequant = DeQuantStub()
 
     def forward(self, x):
-        print('before quantization:')
-        print(x)
-        if self.q:
-            x = self.quant(x)
-        print('after quantization:')
-        print(x)
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)

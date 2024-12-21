@@ -197,6 +197,13 @@ if init_from == 'scratch':
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
+    #-----------------------------------------------------
+    model_int8 = torch.ao.quantization.quantize_dynamic(
+        model, 
+        {torch.nn.Linear},
+        dtype=torch.qint8
+    )
+    #-----------------------------------------------------
 elif init_from == 'resume':
     print(f"Resuming training from {out_dir}")
     # resume training from a checkpoint.
@@ -210,14 +217,26 @@ elif init_from == 'resume':
     # create the model
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
-    state_dict = checkpoint['model']
+
+    #-----------------------------------------------------
+    model_int8 = torch.ao.quantization.quantize_dynamic(
+        model, 
+        {torch.nn.Linear},
+        dtype=torch.qint8
+    )
+    #-----------------------------------------------------
+
+
+    state_dict = checkpoint['model_int8']
     # fix the keys of the state dictionary :(
     # honestly no idea how checkpoints sometimes get this prefix, have to debug more
     unwanted_prefix = '_orig_mod.'
     for k,v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
             state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
+
+    model_int8.load_state_dict(state_dict)
+    #model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num']
     best_val_loss = checkpoint['best_val_loss']
 elif init_from.startswith('gpt2'):
@@ -225,14 +244,30 @@ elif init_from.startswith('gpt2'):
     # initialize from OpenAI GPT-2 weights
     override_args = dict(dropout=dropout)
     model = GPT.from_pretrained(init_from, override_args)
+
+    #-----------------------------------------------------
+    model_int8 = torch.ao.quantization.quantize_dynamic(
+        model, 
+        {torch.nn.Linear},
+        dtype=torch.qint8
+    )
+    #-----------------------------------------------------
+
+
     # read off the created config params, so we can store them into checkpoint correctly
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = getattr(model.config, k)
 # crop down the model block size if desired, using model surgery
-if block_size < model.config.block_size:
-    model.crop_block_size(block_size)
+#if block_size < model.config.block_size:
+#    model.crop_block_size(block_size)
+#    model_args['block_size'] = block_size # so that the checkpoint will have the right value
+#model.to(device)
+if block_size < model_int8.config.block_size:
+    model_int8.crop_block_size(block_size)
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
-model.to(device)
+model_int8.to(device)
+
+
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
@@ -246,8 +281,8 @@ checkpoint = None # free up memory
 # compile the model
 if compile:
     print("compiling the model... (takes a ~minute)")
-    unoptimized_model = model
-    model = torch.compile(model) # requires PyTorch 2.0
+    unoptimized_model = model_int8
+    model = torch.compile(model_int8) # requires PyTorch 2.0
 
 # wrap model into DDP container
 if ddp:
@@ -257,7 +292,7 @@ if ddp:
 @torch.no_grad()
 def estimate_loss():
     out = {}
-    model.eval()
+    model_int8.eval()
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
@@ -266,7 +301,7 @@ def estimate_loss():
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
-    model.train()
+    model_int8.train()
     return out
 
 # learning rate decay scheduler (cosine with warmup)
@@ -292,7 +327,7 @@ if wandb_log and master_process:
 X, Y = get_batch('train') # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
-raw_model = model.module if ddp else model # unwrap DDP container if needed
+raw_model = model_int8.module if ddp else model_int8 # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 
@@ -339,7 +374,7 @@ while True:
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
         with ctx:
-            logits, loss = model(X, Y)
+            logits, loss = model_int8(X, Y)
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
@@ -348,7 +383,7 @@ while True:
     # clip the gradient
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        torch.nn.utils.clip_grad_norm_(model_int8.parameters(), grad_clip)
     # step the optimizer and scaler if training in fp16
     scaler.step(optimizer)
     scaler.update()
