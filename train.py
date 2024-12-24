@@ -13,7 +13,7 @@ To run with DDP on 4 gpus across 2 nodes, example:
 $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123.456 --master_port=1234 train.py
 - Run on the worker node:
 $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
-(If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=3)
+(If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=1)
 """
 
 import os
@@ -29,8 +29,6 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
-
-
 out_dir = 'out-shakespeare-char'
 eval_interval = 25 # keep frequent because we'll overfit
 eval_iters = 20 
@@ -38,30 +36,25 @@ log_interval = 10 # don't print too too often
 
 # we expect to overfit on this small dataset, so only save when val improves
 always_save_checkpoint = False
-
 wandb_log = False # override via command line if you like
 wandb_project = 'shakespeare-char'
 wandb_run_name = 'mini-gpt'
-
 dataset = 'shakespeare_char'
 gradient_accumulation_steps = 1
 batch_size = 12
-block_size = 64 # context of up to 256 previous characters
+block_size = 64 # context of up to 64 previous characters
 
 # baby GPT model :)
 n_layer = 4
 n_head = 4
 n_embd = 64
 dropout = 0.0
-
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
 max_iters = 100
 lr_decay_iters = 100 # make equal to max_iters usually
 min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
-
 warmup_iters = 10 # not super necessary potentially
-
 # on macbook also add
 device = 'cpu'  # run on cpu only
 compile = False # do not torch compile the model
@@ -73,30 +66,7 @@ compile = False # do not torch compile the model
 eval_only = False # if True, script exits right after the first eval
 #always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
-# wandb logging
-#wandb_log = False # disabled by default
-#wandb_project = 'owt'
-#wandb_run_name = 'gpt2' # 'run' + str(time.time())
-# data
-#dataset = 'openwebtext'
-#dataset = 'shakespeare'
-#gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-#batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
-#block_size = 1024
-#block_size = 64
-# model
-#n_layer = 12
-#n_head = 12
-#n_embd = 768
-
-#n_layer = 4
-#n_head = 4
-#n_embd = 64
-#dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
-# adamw optimizer
-#learning_rate = 6e-4 # max learning rate
-#max_iters = 100 # total number of training iterations
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -108,12 +78,8 @@ decay_lr = True # whether to decay the learning rate
 #min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
 # DDP settings
 backend = 'nccl' # 'nccl', 'gloo', etc.
-# system
-#device = 'cpu'
-#device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:2', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = False # use PyTorch 2.0 to compile the model to be faster
-
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
@@ -197,7 +163,13 @@ if init_from == 'scratch':
         print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
     gptconf = GPTConfig(**model_args)
+    #----------------------
     model = GPT(gptconf)
+    model.eval()
+    model.qconfig = torch.ao.quantization.get_default_qat_qconfig('x86')
+
+    #----------------------
+
 elif init_from == 'resume':
     print(f"Resuming training from {out_dir}")
     # resume training from a checkpoint.
@@ -210,7 +182,12 @@ elif init_from == 'resume':
         model_args[k] = checkpoint_model_args[k]
     # create the model
     gptconf = GPTConfig(**model_args)
+    #----------------------
     model = GPT(gptconf)
+    model.eval()
+    model.qconfig = torch.ao.quantization.get_default_qat_qconfig('x86')
+    #----------------------
+
     state_dict = checkpoint['model']
     # fix the keys of the state dictionary :(
     # honestly no idea how checkpoints sometimes get this prefix, have to debug more
@@ -289,14 +266,14 @@ if wandb_log and master_process:
     import wandb
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
+model_prepared = torch.ao.quantization.prepare_qat(model.train())
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
-raw_model = model.module if ddp else model # unwrap DDP container if needed
+raw_model = model_prepared.module if ddp else model_prepared # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
-
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
     for param_group in optimizer.param_groups:

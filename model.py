@@ -79,16 +79,20 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
+        self.quant = torch.ao.quantization.QuantStub()
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu    = nn.GELU()
         self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
+        self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x):
+        x = self.quant(x)
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
         x = self.dropout(x)
+        x = self.dequant(x)
         return x
 
 class Block(nn.Module):
