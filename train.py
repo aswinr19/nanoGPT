@@ -351,6 +351,7 @@ while True:
     # termination conditions
     if iter_num > max_iters:
         break
-
+model_prepared.eval()
+model_int8 = torch.ao.quantization.convert(model_prepared)
 if ddp:
     destroy_process_group()
