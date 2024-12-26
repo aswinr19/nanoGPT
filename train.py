@@ -187,7 +187,6 @@ elif init_from == 'resume':
     model.eval()
     model.qconfig = torch.ao.quantization.get_default_qat_qconfig('x86')
     #----------------------
-
     state_dict = checkpoint['model']
     # fix the keys of the state dictionary :(
     # honestly no idea how checkpoints sometimes get this prefix, have to debug more
@@ -211,6 +210,18 @@ if block_size < model.config.block_size:
     model.crop_block_size(block_size)
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
 model.to(device)
+
+#print("model qconfig")
+#print(model.qconfig)
+
+
+#-----------------------------------------------------------------------------
+for _, mod in model.named_modules():
+    if isinstance(mod, torch.nn.Embedding):
+        mod.qconfig = torch.ao.quantization.float_qparams_weight_only_qconfig
+#-----------------------------------------------------------------------------
+
+
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))

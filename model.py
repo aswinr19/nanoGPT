@@ -66,7 +66,11 @@ class CausalSelfAttention(nn.Module):
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
             att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-            att = F.softmax(att, dim=-1)
+            # ----------------------------------------------------------------------------------------
+            # change here!!
+            # ----------------------------------------------------------------------------------------
+            #att = F.softmax(att, dim=-1)
+            att = nn.Softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
@@ -92,7 +96,8 @@ class MLP(nn.Module):
         x = self.gelu(x)
         x = self.c_proj(x)
         x = self.dropout(x)
-        x = self.dequant(x)
+
+
         return x
 
 class Block(nn.Module):
@@ -325,7 +330,11 @@ class GPT(nn.Module):
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float('Inf')
             # apply softmax to convert logits to (normalized) probabilities
-            probs = F.softmax(logits, dim=-1)
+            # ----------------------------------------------------------------------------------------
+            # change here!!
+            # ----------------------------------------------------------------------------------------
+            probs = nn.Softmax(logits, dim=-1)
+            #probs = F.softmax(logits, dim=-1)
             # sample from the distribution
             idx_next = torch.multinomial(probs, num_samples=1)
             # append sampled index to the running sequence and continue
