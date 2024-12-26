@@ -50,7 +50,7 @@ n_head = 4
 n_embd = 64
 dropout = 0.0
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
-max_iters = 100
+max_iters = 2000
 lr_decay_iters = 100 # make equal to max_iters usually
 min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
@@ -220,8 +220,8 @@ for _, mod in model.named_modules():
     if isinstance(mod, torch.nn.Embedding):
         mod.qconfig = torch.ao.quantization.float_qparams_weight_only_qconfig
 #-----------------------------------------------------------------------------
-
-
+print("state dict")
+print(model.state_dict)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
@@ -363,6 +363,6 @@ while True:
     if iter_num > max_iters:
         break
 model_prepared.eval()
-model_int8 = torch.ao.quantization.convert(model_prepared)
+model_int8 = torch.ao.quantization.convert(model_prepared, inplace=True)
 if ddp:
     destroy_process_group()

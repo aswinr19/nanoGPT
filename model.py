@@ -69,8 +69,8 @@ class CausalSelfAttention(nn.Module):
             # ----------------------------------------------------------------------------------------
             # change here!!
             # ----------------------------------------------------------------------------------------
-            #att = F.softmax(att, dim=-1)
-            att = nn.Softmax(att, dim=-1)
+            att = F.softmax(att, dim=-1)
+            #att = nn.Softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
@@ -333,8 +333,8 @@ class GPT(nn.Module):
             # ----------------------------------------------------------------------------------------
             # change here!!
             # ----------------------------------------------------------------------------------------
-            probs = nn.Softmax(logits, dim=-1)
-            #probs = F.softmax(logits, dim=-1)
+            #probs = nn.Softmax(logits, dim=-1)
+            probs = F.softmax(logits, dim=-1)
             # sample from the distribution
             idx_next = torch.multinomial(probs, num_samples=1)
             # append sampled index to the running sequence and continue
