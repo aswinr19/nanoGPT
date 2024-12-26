@@ -39,6 +39,14 @@ if init_from == 'resume':
     gptconf = GPTConfig(**checkpoint['model_args'])
     model = GPT(gptconf)
     state_dict = checkpoint['model']
+
+
+    with open('state.txt','w', newline='') as f:
+        for key, value in state_dict.items():
+            print(key)
+            f.write(f'{key},')
+
+
     unwanted_prefix = '_orig_mod.'
     for k,v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
