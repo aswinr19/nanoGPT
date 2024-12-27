@@ -50,7 +50,7 @@ n_head = 4
 n_embd = 64
 dropout = 0.0
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
-max_iters = 25000
+max_iters = 100
 lr_decay_iters = 100 # make equal to max_iters usually
 min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
@@ -86,6 +86,14 @@ config_keys = [k for k,v in globals().items() if not k.startswith('_') and isins
 exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
+
+def print_size_of_model(model, label=""):
+    torch.save(model.state_dict(), "temp.p")
+    size=os.path.getsize("temp.p")
+    print("model: ",label,' \t','Size (KB):', size/1e3)
+    os.remove('temp.p')
+    return size
+
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
@@ -366,3 +374,6 @@ model_prepared.eval()
 model_int8 = torch.ao.quantization.convert(model_prepared, inplace=True)
 if ddp:
     destroy_process_group()
+
+
+m = print_size_of_model(model_int8, "int8")

@@ -40,13 +40,19 @@ if init_from == 'resume':
     model = GPT(gptconf)
 
 
+#-----------------------------------------------------------------------------
+    for _, mod in model.named_modules():
+        if isinstance(mod, torch.nn.Embedding):
+            mod.qconfig = torch.ao.quantization.float_qparams_weight_only_qconfig
+#-----------------------------------------------------------------------------
+
     with open('state.txt','r', newline='') as f:
         attrs = f.read()
     
     values = attrs.split(',')
 
-    #for val in values:
-    #    print(val.strip())
+    for val in values:
+        print(val.strip())
 
 
     state_dict = checkpoint['model']
@@ -77,8 +83,8 @@ elif init_from.startswith('gpt2'):
     # init from a given GPT-2 model
     model = GPT.from_pretrained(init_from, dict(dropout=0.0))
 
-print('state dict')
-print(state_dict)
+#print('state dict')
+#print(state_dict)
 
 model.eval()
 model.to(device)
@@ -112,10 +118,12 @@ if start.startswith('FILE:'):
 start_ids = encode(start)
 x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
 
+
 # run generation
 with torch.no_grad():
     with ctx:
         for k in range(num_samples):
+            #y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
             print(decode(y[0].tolist()))
             print('---------------')
