@@ -57,22 +57,22 @@ if init_from == 'resume':
 
     state_dict = checkpoint['model']
     
-    cpy = state_dict.copy()
+    #cpy = state_dict.copy()
 
-    print('state dict before popping: ')
-    for key, value in cpy.items():
-        print(f'key: {key} ')
+    #print('state dict before popping: ')
+    #for key, value in cpy.items():
+    #    print(f'key: {key} ')
 
-    for key, value in state_dict.items():
-        if key not in values:
-            cpy.pop(key)
+    #for key, value in state_dict.items():
+    #    if key not in values:
+    #        cpy.pop(key)
 
-    print('state dict after popping: ')
+    #print('state dict after popping: ')
 
-    state_dict = cpy
+    #state_dict = cpy
 
-    for key, value in state_dict.items():
-        print(f'key: {key} ')
+    #for key, value in state_dict.items():
+    #    print(f'key: {key} ')
 
     unwanted_prefix = '_orig_mod.'
     for k,v in list(state_dict.items()):
