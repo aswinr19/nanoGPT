@@ -55,7 +55,7 @@ n_embd = 64
 dropout = 0.0
 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
-max_iters = 5000
+max_iters = 100
 lr_decay_iters = 100 # make equal to max_iters usually
 min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
@@ -113,6 +113,15 @@ backend = 'nccl' # 'nccl', 'gloo', etc.
 #device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:2', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = False # use PyTorch 2.0 to compile the model to be faster
+
+
+def print_size_of_model(model, label=""):
+    torch.save(model.state_dict(), "temp.p")
+    size=os.path.getsize("temp.p")
+    print("model: ",label,' \t','Size (KB):', size/1e3)
+    os.remove('temp.p')
+    return size
+
 
 
 # -----------------------------------------------------------------------------
@@ -377,3 +386,5 @@ while True:
 
 if ddp:
     destroy_process_group()
+
+print_size_of_model(model, "fp32")
