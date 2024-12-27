@@ -38,7 +38,32 @@ if init_from == 'resume':
     checkpoint = torch.load(ckpt_path, map_location=device)
     gptconf = GPTConfig(**checkpoint['model_args'])
     model = GPT(gptconf)
+
+
+    with open('state.txt','r', newline='') as f:
+        attrs = f.read()
+    
+    values = attrs.split(',')
+
+    #for val in values:
+    #    print(val.strip())
+
+
     state_dict = checkpoint['model']
+    
+    cpy = state_dict.copy()
+
+    print('state dict before popping: ')
+    for key, value in cpy.items():
+        print(f'key: {key} ')
+
+    for key, value in state_dict.items():
+        if key not in values:
+            cpy.pop(key)
+
+    print('state dict after popping: ')
+
+    state_dict = cpy
 
     for key, value in state_dict.items():
         print(f'key: {key} ')
