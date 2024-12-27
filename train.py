@@ -125,6 +125,17 @@ exec(open('configurator.py').read()) # overrides from command line or config fil
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 
+
+
+def print_size_of_model(model, label=""):
+    torch.save(model.state_dict(), "temp.p")
+    size=os.path.getsize("temp.p")
+    print("model: ",label,' \t','Size (KB):', size/1e3)
+    os.remove('temp.p')
+    return size
+
+
+
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
 if ddp:
@@ -381,3 +392,5 @@ while True:
 
 if ddp:
     destroy_process_group()
+
+print_size_of_model(model, "f32")
